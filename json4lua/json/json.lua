@@ -18,7 +18,7 @@
 --   compat-5.1 if using Lua 5.0
 --
 -- CHANGELOG
---   0.9.20 Introduction of local Lua functions for private functions (removed _ function prefix). 
+--   0.9.20 Introduction of local Lua functions for private functions (removed _ function prefix).
 --          Fixed Lua 5.1 compatibility issues.
 --   		Introduced json.null to have null values in associative arrays.
 --          encode() performance improvement (more than 50%) through table.concat rather than ..
@@ -38,7 +38,10 @@ local base = _G
 -----------------------------------------------------------------------------
 -- Module declaration
 -----------------------------------------------------------------------------
-module("json")
+
+local json = {}
+json.null = "null"
+
 
 -- Public functions
 
@@ -60,24 +63,28 @@ local isEncodable
 --- Encodes an arbitrary Lua object / variable.
 -- @param v The Lua object / variable to be JSON encoded.
 -- @return String containing the JSON encoding in internal Lua string format (i.e. not unicode)
-function encode (v)
+function json.encode(v)
   -- Handle nil values
   if v==nil then
     return "null"
   end
-  
-  local vtype = base.type(v)  
+
+  local vtype = base.type(v)
 
   -- Handle strings
-  if vtype=='string' then    
+  if vtype=='string' then
+    if v == json.null then
+       return encodeString(v)
+    end
+
     return '"' .. encodeString(v) .. '"'	    -- Need to handle encoding in string
   end
-  
+
   -- Handle booleans
   if vtype=='number' or vtype=='boolean' then
     return base.tostring(v)
   end
-  
+
   -- Handle tables
   if vtype=='table' then
     local rval = {}
@@ -85,12 +92,12 @@ function encode (v)
     local bArray, maxCount = isArray(v)
     if bArray then
       for i = 1,maxCount do
-        table.insert(rval, encode(v[i]))
+        table.insert(rval, json.encode(v[i]))
       end
     else	-- An object, not an array
       for i,j in base.pairs(v) do
         if isEncodable(i) and isEncodable(j) then
-          table.insert(rval, '"' .. encodeString(i) .. '":' .. encode(j))
+          table.insert(rval, '"' .. encodeString(i) .. '":' .. json.encode(j))
         end
       end
     end
@@ -100,12 +107,12 @@ function encode (v)
       return '{' .. table.concat(rval,',') .. '}'
     end
   end
-  
+
   -- Handle null values
   if vtype=='function' and v==null then
     return 'null'
   end
-  
+
   base.assert(false,'encode attempt to encode unsupported type ' .. vtype .. ':' .. base.tostring(v))
 end
 
@@ -116,7 +123,7 @@ end
 -- @param Lua object, number The object that was scanned, as a Lua table / string / number / boolean or nil,
 -- and the position of the first character after
 -- the scanned JSON object.
-function decode(s, startPos)
+function json.decode(s, startPos)
   startPos = startPos and startPos or 1
   startPos = decode_scanWhitespace(s,startPos)
   base.assert(startPos<=string.len(s), 'Unterminated JSON encoded object found at position in [' .. s .. ']')
@@ -138,17 +145,12 @@ function decode(s, startPos)
     return decode_scanString(s,startPos)
   end
   if string.sub(s,startPos,startPos+1)=='/*' then
-    return decode(s, decode_scanComment(s,startPos))
+    return json.decode(s, decode_scanComment(s,startPos))
   end
   -- Otherwise, it must be a constant
   return decode_scanConstant(s,startPos)
 end
 
---- The null function allows one to specify a null value in an associative array (which is otherwise
--- discarded if you set the value with 'nil' in Lua. Simply set t = { first=json.null }
-function null()
-  return null -- so json.null() will also return null ;-)
-end
 -----------------------------------------------------------------------------
 -- Internal, PRIVATE functions.
 -- Following a Python-like convention, I have prefixed all these 'PRIVATE'
@@ -178,7 +180,7 @@ function decode_scanArray(s,startPos)
       startPos = decode_scanWhitespace(s,startPos+1)
     end
     base.assert(startPos<=stringLen, 'JSON String ended unexpectedly scanning array.')
-    object, startPos = decode(s,startPos)
+    object, startPos = json.decode(s,startPos)
     table.insert(array,object)
   until false
 end
@@ -191,14 +193,14 @@ function decode_scanComment(s, startPos)
   base.assert( string.sub(s,startPos,startPos+1)=='/*', "decode_scanComment called but comment does not start at position " .. startPos)
   local endPos = string.find(s,'*/',startPos+2)
   base.assert(endPos~=nil, "Unterminated comment in string at " .. startPos)
-  return endPos+2  
+  return endPos+2
 end
 
 --- Scans for given constants: true, false or null
 -- Returns the appropriate Lua type, and the position of the next character to read.
 -- @param s The string being scanned.
 -- @param startPos The position in the string at which to start scanning.
--- @return object, int The object (true, false or nil) and the position at which the next character should be 
+-- @return object, int The object (true, false or nil) and the position at which the next character should be
 -- scanned.
 function decode_scanConstant(s, startPos)
   local consts = { ["true"] = true, ["false"] = false, ["null"] = nil }
@@ -260,14 +262,14 @@ function decode_scanObject(s,startPos)
     end
     base.assert(startPos<=stringLen, 'JSON string ended unexpectedly scanning object.')
     -- Scan the key
-    key, startPos = decode(s,startPos)
+    key, startPos = json.decode(s,startPos)
     base.assert(startPos<=stringLen, 'JSON string ended unexpectedly searching for value of key ' .. key)
     startPos = decode_scanWhitespace(s,startPos)
     base.assert(startPos<=stringLen, 'JSON string ended unexpectedly searching for value of key ' .. key)
     base.assert(string.sub(s,startPos,startPos)==':','JSON object key-value assignment mal-formed at ' .. startPos)
     startPos = decode_scanWhitespace(s,startPos+1)
     base.assert(startPos<=stringLen, 'JSON string ended unexpectedly searching for value of key ' .. key)
-    value, startPos = decode(s,startPos)
+    value, startPos = json.decode(s,startPos)
     object[key]=value
   until false	-- infinite loop while key-value pairs are found
 end
@@ -291,7 +293,7 @@ function decode_scanString(s,startPos)
   repeat
     local curChar = string.sub(s,endPos,endPos)
     -- Character escaping is only used to escape the string delimiters
-    if not escaped then	
+    if not escaped then
       if curChar==[[\]] then
         escaped = true
       else
@@ -307,7 +309,7 @@ function decode_scanString(s,startPos)
   local stringValue = 'return ' .. string.sub(s, startPos, endPos-1)
   local stringEval = base.loadstring(stringValue)
   base.assert(stringEval, 'Failed to load string [ ' .. stringValue .. '] in JSON4Lua.decode_scanString at position ' .. startPos .. ' : ' .. endPos)
-  return stringEval(), endPos  
+  return stringEval(), endPos
 end
 
 --- Scans a JSON string skipping all whitespace from the current start position.
@@ -335,7 +337,7 @@ function encodeString(s)
   s = string.gsub(s,"'","\\'")
   s = string.gsub(s,'\n','\\n')
   s = string.gsub(s,'\t','\\t')
-  return s 
+  return s
 end
 
 -- Determines whether the given Lua type is an array or a table / dictionary.
@@ -345,9 +347,9 @@ end
 -- @param t The table to evaluate as an array
 -- @return boolean, number True if the table can be represented as an array, false otherwise. If true,
 -- the second returned value is the maximum
--- number of indexed elements in the array. 
+-- number of indexed elements in the array.
 function isArray(t)
-  -- Next we count all the elements, ensuring that any non-indexed elements are not-encodable 
+  -- Next we count all the elements, ensuring that any non-indexed elements are not-encodable
   -- (with the possible exception of 'n')
   local maxIndex = 0
   for k,v in base.pairs(t) do
@@ -372,6 +374,8 @@ end
 -- @return boolean True if the object should be JSON encoded, false if it should be ignored.
 function isEncodable(o)
   local t = base.type(o)
-  return (t=='string' or t=='boolean' or t=='number' or t=='nil' or t=='table') or (t=='function' and o==null) 
+  return (t=='string' or t=='boolean' or t=='number' or t=='nil' or t=='table') or (t=='function' and o==null)
 end
 
+
+return json
