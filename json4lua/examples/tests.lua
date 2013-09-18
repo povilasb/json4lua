@@ -2,6 +2,11 @@
 Some basic tests for JSON4Lua.
 ]]--
 
+
+if not json then
+	json = dofile('../json/json.lua')
+end
+
 --- Compares two tables for being data-identical.
 function compareData(a,b)
   if (type(a)=='string' or type(a)=='number' or type(a)=='boolean' or type(a)=='nil') then return a==b end
@@ -32,20 +37,19 @@ function testCompareData()
   assert(compareData({'one',2,'three'},{'one',2,'three'}))
   assert(not compareData({'one',2,4},{4,2,'one'}))
   assert(compareData({one='ichi',two='nichi',three='san'}, {three='san',two='nichi',one='ichi'}))
-  s = { one={1,2,3}, two={one='hitotsu',two='futatsu',three='mitsu'} } 
+  s = { one={1,2,3}, two={one='hitotsu',two='futatsu',three='mitsu'} }
   assert(compareData(s,s))
-  t = { one={1,2,3}, two={one='een',two='twee',three='drie'} } 
+  t = { one={1,2,3}, two={one='een',two='twee',three='drie'} }
   assert(not compareData(s,t))
 end
 
 testCompareData()
-  
+
 --
 --
 -- Performs some perfunctory tests on JSON module
 function testJSON4Lua()
-  json = require('json')
-  
+
   if nil then
   -- Test encodeString
   s = [["\"
@@ -55,9 +59,9 @@ function testJSON4Lua()
   s = [["""\\\"]]
   r = json._encodeString(s)
   assert(r==[[\"\"\"\\\\\\\"]])
-  
-  end 
-  
+
+  end
+
   -- Test encode for basic strings (complicated strings)
   s = [[Hello, Lua!]]
   r = json.encode(s)
@@ -69,7 +73,7 @@ function testJSON4Lua()
   s = [["""\\\"]]
   r = json.encode(s)
   assert(r==[["\"\"\"\\\\\\\""]])
-  
+
   -- Test encode for numeric values
   s = 23
   r = json.encode(s)
@@ -77,7 +81,7 @@ function testJSON4Lua()
   s=48.123
   r = json.encode(s)
   assert(r=='48.123')
-  
+
   -- Test encode for boolean values
   assert(json.encode(true)=='true')
   assert(json.encode(false)=='false')
@@ -90,19 +94,19 @@ function testJSON4Lua()
   s = {9,9,9}
   r = json.encode(s)
   assert(r=="[9,9,9]")
-  
+
   -- Complex array test
   s = { 2, 'joe', false, nil, 'hi' }
   r = json.encode(s)
   assert(r=='[2,"joe",false,null,"hi"]')
-  
+
   -- Test encode for tables
   s = {Name='Craig',email='craig@lateral.co.za',age=35}
   r = json.encode(s)
   -- NB: This test can fail because of order: need to test further once
   -- decoding is supported.
   assert(r==[[{"age":35,"Name":"Craig","email":"craig@lateral.co.za"}]])
-  
+
   -- Test decode_scanWhitespace
   if nil then
   s = "   \n   \r   \t   "
@@ -110,7 +114,7 @@ function testJSON4Lua()
   assert(e==string.len(s)+1)
   s = " \n\r\t4"
   assert(json._decode_scanWhitespace(s,1)==5)
-  
+
   -- Test decode_scanString
   s = [["Test"]]
   r,e = json._decode_scanString(s,1)
@@ -118,7 +122,7 @@ function testJSON4Lua()
   s = [["This\nis a \"test"]]
   r = json._decode_scanString(s,1)
   assert(r=="This\nis a \"test")
-  
+
   -- Test decode_scanNumber
   s = [[354]]
   r,e = json._decode_scanNumber(s,1)
@@ -129,7 +133,7 @@ function testJSON4Lua()
   s = [[ -23.22 and ]]
   r,e = json._decode_scanNumber(s,2)
   assert(r==-23.22 and e==8)
- 
+
   -- Test decode_scanConstant
   s = "true"
   r,e = json._decode_scanConstant(s,1)
@@ -140,7 +144,7 @@ function testJSON4Lua()
   s = "1null6"
   r,e = json._decode_scanConstant(s,2)
   assert(r==nil and e==6)
-  
+
   -- Test decode_scanArray
   s = "[1,2,3]"
   r,e = json._decode_scanArray(s,1)
@@ -154,9 +158,9 @@ function testJSON4Lua()
   s = "[3,5,null,7,9,null,null]"
   r,e = json._decode_scanArray(s,1)
   assert(compareData(r, {3,5,nil,7,9,nil,nil}))
-  
+
   end
-  
+
   -- Test decode_scanObject
   s = [[ {"one":1, "two":2, "three":"three", "four":true} ]]
   r,e = json.decode(s)
@@ -168,14 +172,14 @@ function testJSON4Lua()
     "lua_is_great":true } ]]
   r,e = json.decode(s)
   assert(compareData(r, {primes={2,3,5,7,9},user={name='craig',age=35,programs_lua=true},lua_is_great=true}))
-  
+
   -- Test json.null management
   t = { 1,2,json.null,4 }
   assert( json.encode(t)=="[1,2,null,4]" )
   t = {x=json.null }
   r = json.encode(t)
   assert( json.encode(t) == '{"x":null}' )
-  
+
   -- Test comment decoding
   s = [[ /* A comment
             that spans
